@@ -601,11 +601,6 @@ function showToast(msg) {
 // ── INIT ──
 setDefaults();
 renderLog();
-
-// Service worker for offline/PWA
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
-}
 </script>
 </body>
 </html>
