@@ -560,7 +560,10 @@ function detailHTML(e, isAdmin) {
     ${e.status==='pending'
       ? `<button class="btn btn-good" style="margin-bottom:10px" onclick="markEntered('${e.id}')">✅ Mark as Entered into Vector Solutions</button>`
       : `<button class="btn btn-outline" style="margin-bottom:10px;width:100%" onclick="markPending('${e.id}')">↩ Mark as Pending</button>`}
-    <button class="btn btn-danger" onclick="deleteEvent('${e.id}')">🗑 Delete Event</button>` : ''}`;
+    <button class="btn btn-navy" style="margin-bottom:10px" onclick="exportSingleEvent('${e.id}')">⬇️ Export This Event</button>
+    <button class="btn btn-danger" onclick="deleteEvent('${e.id}')">🗑 Delete Event</button>` : `
+    <div style="height:1px;background:var(--border);margin:1rem 0"></div>
+    <button class="btn btn-outline" style="width:100%" onclick="exportSingleEvent('${e.id}')">⬇️ Export This Event</button>`}`;
 }
 
 // ══════════════════════════════════════════════
@@ -613,6 +616,12 @@ function renderAdminDashboard(el) {
       <div class="stat-card"><div class="stat-num">${events.length}</div><div class="stat-label">Total</div></div>
       <div class="stat-card"><div class="stat-num pending-color">${pending}</div><div class="stat-label">Pending</div></div>
       <div class="stat-card"><div class="stat-num entered-color">${entered}</div><div class="stat-label">Entered</div></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:1rem">
+      <button class="btn btn-good btn-sm" style="flex:1" onclick="exportCSV('all')">⬇️ Export All</button>
+      <button class="btn btn-outline btn-sm" style="flex:1" onclick="exportCSV('pending')">⬇️ Pending</button>
+      <button class="btn btn-outline btn-sm" style="flex:1" onclick="exportCSV('entered')">⬇️ Entered</button>
     </div>
 
     <div class="filter-row">
@@ -698,6 +707,85 @@ async function deleteEvent(id) {
 function signOutAdmin() {
   adminUnlocked = false;
   renderAdmin();
+}
+
+// ══════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════
+function exportCSV(filter) {
+  let rows = events;
+  if (filter==='pending') rows = events.filter(e=>e.status==='pending');
+  if (filter==='entered') rows = events.filter(e=>e.status==='entered');
+  if (!rows.length) { showToast('No events to export'); return; }
+
+  const headers = [
+    'Date','Start Time','Duration (hrs)','Location','Class Type',
+    'Number of Contacts','Primary Instructor','Additional Personnel',
+    'Additional Information','Submitted By','Status','Submitted At'
+  ];
+  const csvRows = rows.map(e=>[
+    e.date,
+    e.start_time ? formatTime(e.start_time) : '',
+    e.duration, e.location, e.class_type, e.contacts, e.instructor,
+    e.additional_personnel||'', e.notes||'', e.submitted_by,
+    e.status==='pending'?'Pending':'Entered',
+    new Date(e.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+
+  const csv  = [headers.join(','),...csvRows].join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const label = filter==='all'?'All':filter==='pending'?'Pending':'Entered';
+  a.href = url;
+  a.download = `WFD_PubEd_${label}_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast(`✅ ${label} events exported`);
+}
+
+function exportSingleEvent(id) {
+  const e = events.find(x=>x.id===id);
+  if (!e) return;
+  const dateStr = new Date(e.date+'T12:00:00').toLocaleDateString('en-US',
+    {weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Public Ed Event — ${e.class_type}</title>
+<style>
+  body{font-family:Arial,sans-serif;max-width:600px;margin:2rem auto;padding:1rem;color:#222}
+  h1{font-size:1.4rem;color:#0D1B2A;margin-bottom:0.3rem}
+  .sub{font-size:0.85rem;color:#888;margin-bottom:1.5rem}
+  .status{display:inline-block;padding:3px 10px;border-radius:4px;font-size:0.8rem;font-weight:700;
+    background:${e.status==='pending'?'#FFF8E1':'#E8F5E9'};color:${e.status==='pending'?'#F57F17':'#2E7D32'};margin-bottom:1.5rem}
+  table{width:100%;border-collapse:collapse}
+  td{padding:8px 10px;border-bottom:1px solid #eee;font-size:0.9rem}
+  td:first-child{font-weight:700;color:#555;width:45%;text-transform:uppercase;font-size:0.75rem;letter-spacing:0.05em}
+  .footer{margin-top:2rem;font-size:0.75rem;color:#aaa}
+</style></head><body>
+<h1>${e.class_type}</h1>
+<div class="sub">Westminster Fire Department — Public Education Event</div>
+<div class="status">${e.status==='pending'?'⏳ Pending Review':'✅ Entered into Vector Solutions'}</div>
+<table>
+  <tr><td>Date</td><td>${dateStr}</td></tr>
+  ${e.start_time?`<tr><td>Start Time</td><td>${formatTime(e.start_time)}</td></tr>`:''}
+  <tr><td>Duration</td><td>${e.duration} hour${e.duration!==1?'s':''}</td></tr>
+  <tr><td>Location</td><td>${e.location}</td></tr>
+  <tr><td>Class Type</td><td>${e.class_type}</td></tr>
+  <tr><td>Number of Contacts</td><td>${e.contacts}</td></tr>
+  <tr><td>Primary Instructor</td><td>${e.instructor}</td></tr>
+  ${e.additional_personnel?`<tr><td>Additional Personnel</td><td>${e.additional_personnel}</td></tr>`:''}
+  ${e.notes?`<tr><td>Additional Information</td><td>${e.notes}</td></tr>`:''}
+  <tr><td>Submitted By</td><td>${e.submitted_by}</td></tr>
+</table>
+<div class="footer">Exported ${new Date().toLocaleString()} · Westminster FD Public Ed Tracker</div>
+</body></html>`;
+
+  const blob = new Blob([html],{type:'text/html'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `WFD_PubEd_${e.class_type.replace(/\s+/g,'-')}_${e.date}.html`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('✅ Event exported');
 }
 
 // ══════════════════════════════════════════════
